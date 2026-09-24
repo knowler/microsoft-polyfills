@@ -109,8 +109,8 @@ export function isKeyboardFocusable(element, owner) {
         element.matches(":is(a, area):not([href])") ||
         // Not inert
         element.inert ||
-        // Not hidden
-        !checkVisibility(element, owner) ||
+        // Not hidden (except if within a popover or dialog)
+        !(element.parentElement.closest("[popover], dialog") || checkVisibility(element, owner)) ||
         // Not a media element without controls
         element.matches(":is(audio, video):not([controls])") ||
         // Has not been assigned a tabindex by the polyfill
