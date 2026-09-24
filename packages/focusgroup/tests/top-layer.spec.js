@@ -9,10 +9,6 @@ test.describe("top-layer modal dialog", () => {
   test("modal dialog's own focusgroup navigates in both directions while in the top layer", async ({
     page,
   }, { project }) => {
-    test.fixme(
-      project.use.channel !== "chrome-canary",
-      "Top-layer exclusion not yet implemented in the polyfill",
-    );
     await setupPage(
       page,
       project,
@@ -74,10 +70,6 @@ test.describe("top-layer popover excluded from ancestor navigation", () => {
   test("arrow keys do not navigate from inside a top-layer popover without own focusgroup", async ({
     page,
   }, { project }) => {
-    test.fixme(
-      project.use.channel !== "chrome-canary",
-      "Top-layer exclusion not yet implemented in the polyfill",
-    );
     await setupPage(
       page,
       project,
@@ -132,10 +124,6 @@ test.describe("top-layer popover excluded from ancestor navigation", () => {
   test("open popover splits an ancestor focusgroup into two segments", async ({
     page,
   }, { project }) => {
-    test.fixme(
-      project.use.channel !== "chrome-canary",
-      "Top-layer exclusion not yet implemented in the polyfill",
-    );
     await setupPage(
       page,
       project,
@@ -203,10 +191,6 @@ test.describe("top-layer popover excluded from ancestor navigation", () => {
   test("focusgroup=none popover inside focusgroup: arrows skip, Tab reaches", async ({
     page,
   }, { project }) => {
-    test.fixme(
-      project.use.channel !== "chrome-canary",
-      "Top-layer exclusion not yet implemented in the polyfill",
-    );
     await setupPage(
       page,
       project,
@@ -281,10 +265,6 @@ test.describe("top-layer element with own focusgroup", () => {
   test("inner focusgroup on a shown popover operates independently", async ({
     page,
   }, { project }) => {
-    test.fixme(
-      project.use.channel !== "chrome-canary",
-      "Top-layer exclusion not yet implemented in the polyfill",
-    );
     await setupPage(
       page,
       project,
@@ -333,6 +313,31 @@ test.describe("top-layer element with own focusgroup", () => {
     await page.getByTestId("focusable_outer_b").focus();
     await page.keyboard.press("ArrowLeft");
     await expect(page.getByTestId("focusable_outer_a")).toBeFocused();
+  });
+});
+
+test.describe("focusgroup within a popover", () => {
+  test("focusgroup inside a popover shown after polyfill navigates", async ({
+    page,
+  }, { project }) => {
+    await setupPage(
+      page,
+      project,
+      `<div data-testid="pop" popover>
+        <div focusgroup="toolbar inline">
+          <button data-testid="x">X</button>
+          <button data-testid="y">Y</button>
+        </div>
+      </div>`,
+    );
+
+    await page.getByTestId("pop").evaluate((el) => el.showPopover());
+
+    await page.getByTestId("x").focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(page.getByTestId("y")).toBeFocused();
+    await page.keyboard.press("ArrowLeft");
+    await expect(page.getByTestId("x")).toBeFocused();
   });
 });
 
@@ -489,10 +494,6 @@ test.describe("top-layer exclusion is dynamic", () => {
   test("focusgroup memory falls through when the remembered item enters the top layer", async ({
     page,
   }, { project }) => {
-    test.fixme(
-      project.use.channel !== "chrome-canary",
-      "Top-layer exclusion not yet implemented in the polyfill",
-    );
     await setupPage(
       page,
       project,

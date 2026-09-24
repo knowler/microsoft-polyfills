@@ -25,6 +25,12 @@ import {
  * @import { FocusGroup } from "./focusgroup.js"
  */
 
+/** Matches elements rendered in the top layer. */
+const TOP_LAYER_SELECTOR =
+  typeof CSS !== "undefined" && CSS.supports("selector(:popover-open)")
+    ? ":popover-open, :modal"
+    : ":modal";
+
 /**
  * The default `FocusGroupItemCollection` implementation used by the polyfill.
  *
@@ -72,6 +78,9 @@ export class TreeWalkerItemCollection {
   /** @type {MutationObserver | null} */
   #observer = null;
 
+  /** @type {AbortController} */
+  #disconnectController = new AbortController();
+
   /**
    * @param {HTMLElement!} owner - The focus group owner element.
    */
@@ -110,6 +119,7 @@ export class TreeWalkerItemCollection {
         "disabled",
         "href",
         "hidden",
+        "open",
         "tabindex",
         "type",
       ],
@@ -117,6 +127,22 @@ export class TreeWalkerItemCollection {
       subtree: true,
     });
     observers.add(this.#observer);
+
+    // TODO: support shadow roots
+    const onToggle = ({ target }) => {
+      if (
+        nodeContains(target, this.#owner) ||
+        nodeContains(this.#owner, target)
+      ) {
+        focusGroup.update();
+      }
+    };
+    for (const root of new Set([document, this.#owner.getRootNode()])) {
+      root.addEventListener("toggle", onToggle, {
+        capture: true,
+        signal: this.#disconnectController.signal,
+      });
+    }
   }
 
   /**
@@ -124,6 +150,7 @@ export class TreeWalkerItemCollection {
    * registry. Called from `FocusGroup#disconnect()`; safe to call directly.
    */
   disconnect() {
+    this.#disconnectController.abort();
     observers.delete(this.#observer);
     this.#observer?.disconnect();
     this.#owner = null;
@@ -157,7 +184,11 @@ export class TreeWalkerItemCollection {
       this.#owner,
       NodeFilter.SHOW_ELEMENT,
       (node) => {
-        if (this.#isItemCandidate(node) || this.#isNestedGroupOwner(node)) {
+        if (
+          this.#isItemCandidate(node) ||
+          this.#isNestedGroupOwner(node) ||
+          this.#isNestedTopLayer(node)
+        ) {
           return NodeFilter.FILTER_ACCEPT;
         }
         return NodeFilter.FILTER_SKIP;
@@ -166,6 +197,7 @@ export class TreeWalkerItemCollection {
 
     let pendingSegmentBoundary = false;
     let segment = 0;
+    let hasItems = false;
     /** @type {Element | null} */
     let skipSubtreeOf = null;
 
@@ -176,6 +208,26 @@ export class TreeWalkerItemCollection {
         continue;
       }
       skipSubtreeOf = null;
+
+      // Top-layer descendants (open popovers, modal dialogs) are excluded
+      // from this group and split it into segments, like opted-out subtrees
+      // (a leading one has no preceding segment to split from).
+      if (this.#isNestedTopLayer(node)) {
+        const focusables = createTreeWalker(
+          document,
+          node,
+          NodeFilter.SHOW_ELEMENT,
+          (el) =>
+            isKeyboardFocusable(el)
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_SKIP,
+        );
+        if (hasItems && (isKeyboardFocusable(node) || focusables.nextNode())) {
+          pendingSegmentBoundary = true;
+        }
+        skipSubtreeOf = node;
+        continue;
+      }
 
       if (this.#isNestedGroupOwner(node)) {
         if (isSegmentor(node, this.#owner)) {
@@ -194,6 +246,7 @@ export class TreeWalkerItemCollection {
       }
 
       node.setAttribute(DatasetName.ITEM, this.id);
+      hasItems = true;
       if (pendingSegmentBoundary) {
         segment++;
         node.setAttribute(DatasetName.SEGMENT, String(segment));
@@ -307,7 +360,16 @@ export class TreeWalkerItemCollection {
    * @returns {boolean} Whether `element` is currently an item of this group.
    */
   contains(element) {
-    return this.#filter(element) !== NodeFilter.FILTER_REJECT;
+    if (this.#filter(element) === NodeFilter.FILTER_REJECT) {
+      return false;
+    }
+    // Content of a top-layer element nested within the owner is excluded.
+    const closestTopLayer = getClosestElement(element, TOP_LAYER_SELECTOR);
+    return (
+      !closestTopLayer ||
+      closestTopLayer === this.#owner ||
+      !nodeContains(this.#owner, closestTopLayer)
+    );
   }
 
   /**
@@ -365,6 +427,14 @@ export class TreeWalkerItemCollection {
       isKeyboardFocusable(node, this.#owner) &&
       getClosestElement(getParentElement(node), "[focusgroup]") === this.#owner
     );
+  }
+
+  /**
+   * @param {Element} node
+   * @returns {boolean}
+   */
+  #isNestedTopLayer(node) {
+    return node !== this.#owner && node.matches(TOP_LAYER_SELECTOR);
   }
 
   /**
